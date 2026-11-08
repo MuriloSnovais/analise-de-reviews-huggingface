@@ -1,0 +1,22 @@
+[
+  { "review": "Pedido chegou frio e o entregador foi grosseiro." },
+  { "review": "Péssimo! Veio faltando um item e ninguém resolveu meu problema." },
+  { "review": "A entrega demorou mais de duas horas e a comida chegou toda derramada." },
+  { "review": "Nunca mais peço neste restaurante, o lanche estava horrível." },
+  { "review": "Embalagem rasgada, comida fria e atendimento ignorou minha reclamação." },
+  { "review": "O pedido veio errado pela terceira vez. Muito decepcionante." },
+
+  { "review": "A comida estava ótima, mas a entrega demorou." },
+  { "review": "Comida normal, nada de especial. Chegou no horário previsto." },
+  { "review": "O sabor é razoável, mas achei o preço um pouco alto pela porção." },
+  { "review": "A pizza estava boa, porém chegou meio morna." },
+  { "review": "Entrega rápida, mas o hambúrguer estava só mediano." },
+  { "review": "Nem bom nem ruim, deu pra matar a fome." },
+
+  { "review": "Adorei! Chegou rápido e estava delicioso." },
+  { "review": "Melhor sushi que já pedi por delivery, super recomendo!" },
+  { "review": "Entregador muito educado, comida quentinha e bem embalada." },
+  { "review": "Excelente custo-benefício, porção generosa e sabor incrível." },
+  { "review": "Atendimento nota 10, o pedido chegou antes do previsto." },
+  { "review": "Perfeito! Já virou meu restaurante favorito." }
+]
