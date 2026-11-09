@@ -1,24 +1,26 @@
 """
 API de Análise de Sentimento para Avaliações de Delivery.
 
-Recebe o texto de uma avaliação e devolve a classificação em estrelas (1-5)
-e o sentimento geral (positivo, neutro ou negativo), usando um modelo
-BERT multilíngue do Hugging Face.
+Endpoints:
+- POST /analisar-review   -> analisa UMA avaliação
+- POST /analisar-reviews  -> analisa VÁRIAS avaliações de uma vez (lote)
 """
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from transformers import pipeline
 
 # ----------------------------------------------------------------------------
 # Configuração
 # ----------------------------------------------------------------------------
 MODEL_NAME = "nlptown/bert-base-multilingual-uncased-sentiment"
-MAX_TOKENS = 512  # limite do BERT: textos maiores precisam ser truncados
+MAX_TOKENS = 512            # limite do BERT
+MAX_REVIEWS_POR_LOTE = 50   # protege a API contra requisições gigantes
+TAMANHO_BATCH_MODELO = 8    # quantos textos o modelo processa juntos por vez
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,15 +30,19 @@ logger = logging.getLogger("sentimento-api")
 
 Sentimento = Literal["positivo", "neutro", "negativo"]
 
+# Tipo reutilizável: string limpa (sem espaços nas pontas) e com tamanho válido
+TextoReview = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=3, max_length=2000),
+]
+
 
 # ----------------------------------------------------------------------------
-# Ciclo de vida da aplicação: carrega o modelo UMA vez, na inicialização
+# Ciclo de vida: carrega o modelo UMA vez
 # ----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Carregando o modelo '%s'...", MODEL_NAME)
-    # Se o modelo não carregar, deixamos a exceção subir (fail fast):
-    # é melhor o container falhar logo do que subir "doente".
     app.state.classifier = pipeline("text-classification", model=MODEL_NAME)
     logger.info("Modelo carregado com sucesso.")
     yield
@@ -47,16 +53,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="API de Análise de Sentimento - Delivery",
     description="Classifica avaliações de restaurantes em estrelas e sentimento.",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
 
 # ----------------------------------------------------------------------------
-# Schemas (contratos de entrada e saída)
+# Schemas
 # ----------------------------------------------------------------------------
 class ReviewRequest(BaseModel):
-    # Remove espaços no início/fim ANTES de validar o tamanho mínimo
     model_config = ConfigDict(str_strip_whitespace=True)
 
     review: str = Field(
@@ -78,8 +83,31 @@ class ReviewResponse(BaseModel):
     )
 
 
+class BatchRequest(BaseModel):
+    reviews: list[TextoReview] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_REVIEWS_POR_LOTE,
+        description=f"Lista de avaliações (de 1 a {MAX_REVIEWS_POR_LOTE}).",
+        examples=[["Pedido chegou frio.", "Adorei, estava delicioso!"]],
+    )
+
+
+class ResumoLote(BaseModel):
+    total: int
+    positivos: int
+    neutros: int
+    negativos: int
+    media_estrelas: float
+
+
+class BatchResponse(BaseModel):
+    resumo: ResumoLote
+    resultados: list[ReviewResponse]  # mesma ordem da lista enviada
+
+
 # ----------------------------------------------------------------------------
-# Regras de negócio
+# Regras de negócio e funções auxiliares
 # ----------------------------------------------------------------------------
 def estrelas_para_sentimento(estrelas: int) -> Sentimento:
     """Converte a nota (1-5) em um sentimento geral."""
@@ -90,12 +118,50 @@ def estrelas_para_sentimento(estrelas: int) -> Sentimento:
     return "positivo"
 
 
+def construir_resposta(review: str, saida_modelo: list) -> ReviewResponse:
+    """Transforma a saída bruta do modelo para UM texto em ReviewResponse."""
+    # Dependendo da versão do transformers, a saída pode vir aninhada ([[...]])
+    if saida_modelo and isinstance(saida_modelo[0], list):
+        saida_modelo = saida_modelo[0]
+
+    # Labels vêm como "1 star", "2 stars", ... -> pegamos o número
+    probs = {int(item["label"].split()[0]): item["score"] for item in saida_modelo}
+    estrelas = max(probs, key=probs.get)
+
+    return ReviewResponse(
+        review=review,
+        estrelas=estrelas,
+        confianca=round(probs[estrelas], 4),
+        sentimento=estrelas_para_sentimento(estrelas),
+        probabilidades={str(k): round(v, 4) for k, v in sorted(probs.items())},
+    )
+
+
+def executar_modelo(classifier, entrada):
+    """Chama o pipeline com tratamento de erro centralizado."""
+    try:
+        return classifier(
+            entrada,
+            top_k=None,                    # probabilidade de todas as classes
+            truncation=True,               # corta textos acima do limite
+            max_length=MAX_TOKENS,
+            batch_size=TAMANHO_BATCH_MODELO,
+        )
+    except Exception:
+        # Stack trace vai pro log do servidor; o cliente recebe mensagem genérica.
+        logger.exception("Falha na inferência do modelo.")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro interno ao processar a(s) avaliação(ões).",
+        )
+
+
 # ----------------------------------------------------------------------------
 # Endpoints
 # ----------------------------------------------------------------------------
 @app.get("/health", tags=["Infra"])
 def health(request: Request):
-    """Usado por orquestradores (Docker, Kubernetes) para checar se a API está viva."""
+    """Checa se a API está viva e se o modelo foi carregado."""
     return {
         "status": "ok",
         "modelo_carregado": request.app.state.classifier is not None,
@@ -104,39 +170,34 @@ def health(request: Request):
 
 @app.post("/analisar-review", response_model=ReviewResponse, tags=["Análise"])
 def analisar_review(payload: ReviewRequest, request: Request) -> ReviewResponse:
-    """Analisa uma avaliação e retorna estrelas, confiança e sentimento geral."""
-    classifier = request.app.state.classifier
+    """Analisa UMA avaliação."""
+    saida = executar_modelo(request.app.state.classifier, payload.review)
+    return construir_resposta(payload.review, saida)
 
-    try:
-        # top_k=None -> retorna a probabilidade de TODAS as classes (1 a 5 estrelas)
-        # truncation/max_length -> evita erro com textos acima do limite do BERT
-        resultado = classifier(
-            payload.review,
-            top_k=None,
-            truncation=True,
-            max_length=MAX_TOKENS,
-        )
-    except Exception:
-        # logger.exception registra o stack trace completo NO SERVIDOR,
-        # mas o cliente recebe uma mensagem genérica (sem vazar detalhes internos).
-        logger.exception("Falha na inferência do modelo.")
-        raise HTTPException(
-            status_code=500,
-            detail="Erro interno ao processar a avaliação.",
-        )
 
-    # Dependendo da versão do transformers, o retorno pode vir aninhado ([[...]])
-    if resultado and isinstance(resultado[0], list):
-        resultado = resultado[0]
+@app.post("/analisar-reviews", response_model=BatchResponse, tags=["Análise"])
+def analisar_reviews(payload: BatchRequest, request: Request) -> BatchResponse:
+    """Analisa VÁRIAS avaliações em uma única requisição (lote)."""
+    # Passando uma LISTA, o pipeline processa os textos em batches internos
+    saidas = executar_modelo(request.app.state.classifier, payload.reviews)
 
-    # Labels do modelo vêm como "1 star", "2 stars", ... -> pegamos o número
-    probs = {int(item["label"].split()[0]): item["score"] for item in resultado}
-    estrelas = max(probs, key=probs.get)
+    if len(saidas) != len(payload.reviews):
+        logger.error("Modelo retornou %d resultados para %d textos.",
+                     len(saidas), len(payload.reviews))
+        raise HTTPException(status_code=500, detail="Erro interno ao processar o lote.")
 
-    return ReviewResponse(
-        review=payload.review,
-        estrelas=estrelas,
-        confianca=round(probs[estrelas], 4),
-        sentimento=estrelas_para_sentimento(estrelas),
-        probabilidades={str(k): round(v, 4) for k, v in sorted(probs.items())},
+    resultados = [
+        construir_resposta(texto, saida)
+        for texto, saida in zip(payload.reviews, saidas)
+    ]
+
+    total = len(resultados)
+    resumo = ResumoLote(
+        total=total,
+        positivos=sum(r.sentimento == "positivo" for r in resultados),
+        neutros=sum(r.sentimento == "neutro" for r in resultados),
+        negativos=sum(r.sentimento == "negativo" for r in resultados),
+        media_estrelas=round(sum(r.estrelas for r in resultados) / total, 2),
     )
+
+    return BatchResponse(resumo=resumo, resultados=resultados)

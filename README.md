@@ -109,18 +109,23 @@ uvicorn main:app --reload
 
 ## ⚠️ Limitações conhecidas
 
-- O modelo classifica a avaliação **como um todo**: textos com sentimentos mistos
-  (comida boa, entrega ruim) tendem a cair em notas intermediárias.
-- Foi treinado em avaliações de produtos, não especificamente de delivery brasileiro;
-  gírias e ironia podem reduzir a precisão.
-- Inferência em CPU: adequada para demonstração, não para alto volume.
+Em testes com 18 avaliações, o modelo errou em casos com números no texto
+e expressões neutras:
+
+| Avaliação | Esperado | Obtido | Confiança |
+|---|---|---|---|
+| "Atendimento nota 10, o pedido chegou antes do previsto." | positivo | negativo (1★) | 0.34 |
+| "Nem bom nem ruim, deu pra matar a fome." | neutro | negativo (1★) | 0.61 |
+
+Ambos são exemplos de limitações do modelo (treinado em avaliações de produtos),
+não da API. Fine-tuning com dados de delivery em português seria a evolução natural. 
 
 ## 🔭 Próximos passos
 
-- [ ] Análise de sentimento **por aspecto** (comida, entrega, atendimento)
-- [ ] Endpoint de **processamento em lote**
-- [ ] **Fine-tuning** com avaliações em português brasileiro
+- [x] Endpoint de processamento em lote
 - [ ] Testes automatizados (`pytest`) e CI com GitHub Actions
+- [ ] Análise de sentimento por aspecto (comida, entrega, atendimento)
+- [ ] Fine-tuning com avaliações em português brasileiro
 - [ ] Cache de resultados e métricas (Prometheus)
 
 ## 🛠️ Stack
