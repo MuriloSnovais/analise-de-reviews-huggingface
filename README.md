@@ -13,7 +13,7 @@ Construída com **Python, FastAPI e Hugging Face Transformers**, totalmente
 conteinerizada com **Docker** e com testes automatizados em **pytest**.
 
 (http://localhost:8000/docs)
-![Swagger](Captura_de_tela_20261109_132118.png)
+![Swagger](image/captura.png)
 
 ---
 
@@ -212,11 +212,12 @@ Possíveis causas (hipóteses, já que o modelo é uma "caixa-preta"):
 ├── .github/workflows/ci.yml   # pipeline de CI
 ├── main.py                    # API FastAPI
 ├── test_main.py               # testes automatizados (pytest)
-├── testar_reviews.py          # script de teste manual (precisa da API no ar)
-├── reviews.json               # avaliações de exemplo
 ├── requirements.txt           # dependências de produção
 ├── requirements-dev.txt       # dependências de desenvolvimento (pytest, httpx)
 ├── Dockerfile
+├── scripts/
+│   ├── reviews.json           # avaliações de exemplo
+│   ├── testar_reviews.py ←    # script de teste manual (precisa da API no ar)
 └── README.md
 ```
 
@@ -228,5 +229,5 @@ Python 3.11 · FastAPI · Pydantic · Hugging Face Transformers · PyTorch · Do
 
 ## 👤 Autor
 
-**Murilo Snovais**
-<!-- [LinkedIn](https://www.linkedin.com/in/murilo-santana-novais-4b4601236/)
+**Murilo Santana Novais**
+[LinkedIn](https://www.linkedin.com/in/murilo-santana-novais-4b4601236/)

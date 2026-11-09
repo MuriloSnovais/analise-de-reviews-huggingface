@@ -3,7 +3,7 @@ import urllib.request
 
 URL = "http://localhost:8000/analisar-reviews"
 
-with open("reviews.json", encoding="utf-8") as f:
+with open("scripts/reviews.json", encoding="utf-8") as f:
     textos = [item["review"] for item in json.load(f)]
 
 req = urllib.request.Request(
