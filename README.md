@@ -12,8 +12,8 @@ delivery, retornando a nota prevista (1 a 5 estrelas) e o sentimento geral
 Construída com **Python, FastAPI e Hugging Face Transformers**, totalmente
 conteinerizada com **Docker** e com testes automatizados em **pytest**.
 
-<!-- Coloque aqui um print do Swagger (http://localhost:8000/docs) -->
-<!-- ![Swagger](Captura_de_tela_20261109_132118.png) -->
+(http://localhost:8000/docs)
+![Swagger](Captura_de_tela_20261109_132118.png)
 
 ---
 
