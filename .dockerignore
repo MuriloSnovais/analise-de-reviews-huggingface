@@ -8,3 +8,5 @@ venv/
 README.md
 .vscode/
 .idea/
+test_main.py 
+.pytest_cache/
